@@ -1,71 +1,49 @@
 # Blog Automation Pipeline
 
-**An automated pipeline that turns a topic queue into reviewed technical blog posts on [DEV](https://dev.to/rafiacloud).** It runs every week on GitHub Actions, writes with the Gemini API, checks its own output, and stops at a human review step before anything is published.
+I write technical posts about AI, data and testing, and I wanted a system that does the boring parts for me without ever publishing something I haven't read. So I built one.
 
-> The source code is in a private repository. **Access is available on request** for recruiters and hiring teams. Contact details are at the bottom of this page.
+Every Tuesday, a GitHub Actions job picks the next topic from my queue, asks the Gemini API for a draft, checks that draft against my own quality rules, and drops it into my [DEV](https://dev.to/rafiacloud) account as an unpublished draft. I read it, fix what needs fixing, and hit publish myself.
 
----
+The code lives in a private repo. If you're hiring and want to look through it, send me a message (details at the bottom) and I'll give you access.
 
-## What it does
-
-1. I add topic ideas (topic, angle, tags) to a queue file.
-2. Every Tuesday, a scheduled GitHub Actions job picks the next topic.
-3. The Gemini API writes a structured draft (title, description, Markdown body).
-4. Automated quality checks verify length, structure, a takeaways section, and that filler phrases are absent. A failing draft is regenerated once with the problems fed back to the model.
-5. The draft is sent to the DEV REST API as an **unpublished draft**.
-6. The queue and a run log are updated and committed back to the repo, so every run is traceable.
-7. I review, edit and publish the post on DEV.
-
-## Architecture
+## How it works
 
 ```mermaid
 flowchart LR
-    A[Topic queue<br/>CSV] -->|next 'Ready' topic| B[Python pipeline]
-    S[GitHub Actions<br/>weekly schedule] --> B
-    B --> M[Model discovery<br/>picks newest stable model]
-    M --> C[Gemini API<br/>JSON schema output]
+    A[Topic queue] --> B[Python pipeline]
+    S[Weekly schedule<br/>GitHub Actions] --> B
+    B --> C[Gemini API]
     C --> D{Quality checks}
-    D -->|fail| R[Regenerate with feedback]
-    R --> D
-    D -->|pass| E[DEV API<br/>draft, not published]
-    E --> F[Queue + run log<br/>committed to Git]
-    F --> H[Human review<br/>edit and publish]
+    D -->|not good enough| C
+    D -->|passes| E[DEV draft]
+    E --> F[Log + queue<br/>saved to Git]
+    F --> H[I review and publish]
 ```
 
-## Engineering decisions
+- **Topic queue:** a simple CSV with the topic, the angle I want, and tags.
+- **Drafting:** Gemini returns a structured reply (title, description, article body) that follows a JSON schema, so I'm not parsing loose text.
+- **Quality checks:** length, at least three sections, a key takeaways section, and a list of filler phrases I don't want in my writing. If a draft fails, the pipeline tells the model what was wrong and tries once more.
+- **Publishing:** posts go to DEV as drafts only. Nothing goes live without me.
+- **Record keeping:** every run is written to a log and committed back to the repo, so I can always see what happened and when.
 
-| Decision | Why |
-|---|---|
-| **Drafts only, human review before publishing** | AI output is never published automatically; quality and accuracy stay my responsibility. |
-| **Structured output with a JSON schema** | The model must return `title`, `description` and `body_markdown`, so parsing doesn't depend on free text. |
-| **Automatic model selection** | Model names change. The pipeline asks the API which models are available and picks the newest stable one instead of hard-coding a name. |
-| **Retries with backoff** | Rate limits, server errors and malformed replies are retried up to three times before the run fails. |
-| **Secret handling** | API keys live in GitHub Secrets, are cleaned of stray whitespace, and are redacted from all logs and error messages. |
-| **State in Git** | The topic queue and run log are plain CSV files, so the history of every run is visible and auditable. |
-| **Tests in CI** | 11 unit tests (quality checks, tag cleaning, model selection, reply parsing, secret redaction) run before every pipeline run. |
+## What broke, and how I fixed it
 
-## Problems found and fixed in production
+The first real runs taught me more than the build itself. Four things went wrong:
 
-Getting from "works in tests" to "runs for real" surfaced four issues, each fixed at the root:
+1. **The model I asked for didn't exist any more.** Google had retired the model name in my code, so every request came back 404. Now the pipeline asks the API which models are available and picks the newest stable one.
+2. **The model's reply had extra text after the JSON.** My parser crashed. I added a response schema to the request, made the parsing tolerant of stray text, and added retries with backoff.
+3. **An API key was saved with blank lines after it.** The request was rejected as an invalid header. Keys are now cleaned before they're used.
+4. **That error message leaked part of the key into my log file.** This was the important one. I rotated the key, cleaned the log, and made every message go through a redaction step before it's printed or saved. There's a test for it now.
 
-1. **Retired model name**: the provider retired the model the code requested, so the API returned 404. *Fix:* automatic model discovery.
-2. **Malformed model reply**: the model returned valid JSON followed by extra text, which crashed the parser. *Fix:* a JSON schema in the request, lenient parsing and retries.
-3. **Badly pasted API key**: a key saved with trailing newlines was rejected as an invalid header. *Fix:* keys are normalised before use.
-4. **Secret exposed in a log**: the error message for issue 3 contained the key and was written to the run log. *Fix:* the key was rotated and the log cleaned, and all output now passes through a redaction step, with a test covering it.
+## Built with
 
-## Results
+Python, the Gemini API, the DEV (Forem) REST API, GitHub Actions (scheduled runs, secrets, artifacts) and pytest. There are 11 unit tests, and they run before every pipeline run. The whole thing costs nothing to run.
 
-- First real run: a **1,229-word** draft generated, checked and delivered to DEV in under a minute
-- Runs weekly with no manual steps until review
-- **Runs at no cost**: GitHub Actions, the Gemini API free tier and the DEV API
+## First result
 
-## Tech stack
-
-Python · Gemini API · DEV (Forem) REST API · GitHub Actions (cron, secrets, artifacts) · pytest · CSV as a lightweight data store
+The first real run produced a 1,229-word article, *What is Physical AI? Perception, Planning and Control Explained*, which passed every check and arrived in my DEV drafts in under a minute.
 
 ---
 
-**Rafia Imran**, AI product development and automation · Munich / remote
-Live CV: [rafiaimran.cloud](https://rafiaimran.cloud) · Blog: [dev.to/rafiacloud](https://dev.to/rafiacloud) · LinkedIn: [linkedin.com/in/rafiaim](https://www.linkedin.com/in/rafiaim)
-
-**Want to see the code?** Message me on LinkedIn or email imranrafia25789@gmail.com and I'll add you to the private repository.
+**Rafia Imran** · Munich / remote
+[Live CV](https://rafiaimran.cloud) · [Blog on DEV](https://dev.to/rafiacloud) · [LinkedIn](https://www.linkedin.com/in/rafia-i-b64664276) · imranrafia25789@gmail.com
