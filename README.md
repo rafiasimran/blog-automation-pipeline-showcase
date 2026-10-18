@@ -46,4 +46,4 @@ The first real run produced a 1,229-word article, *What is Physical AI? Percepti
 ---
 
 **Rafia Imran** · Munich / remote
-[Live CV](https://rafiaimran.cloud) · [Blog on DEV](https://dev.to/rafiacloud) · [LinkedIn](https://www.linkedin.com/in/rafia-i-b64664276) · imranrafia25789@gmail.com
+[Live CV](https://rafiaimran.cloud) · [Blog on DEV](https://dev.to/rafiacloud) · imranrafia25789@gmail.com
